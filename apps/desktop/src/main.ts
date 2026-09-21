@@ -27,7 +27,7 @@ import { DESKTOP_IPC, SCHEME, assertDesktopSender, type DesktopUpdateState } fro
 import { formatDesktopMessage, resolveDesktopLocale } from './locale.ts'
 import { claimDesktopSingleInstance } from './single-instance.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
-import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
+import { serveWebDocument, serveShellDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
 import { DesktopFatalRecovery } from './fatal-recovery.ts'
 import { DesktopUpdateJournal } from './update-journal.ts'
 import { DesktopUpdatePreparationError } from './update-error.ts'
@@ -397,6 +397,8 @@ async function main(): Promise<void> {
 
   protocol.handle(SCHEME, (request) => {
     const url = new URL(request.url)
+    // Update confirmations and the mandatory policy UI load shell-owned documents.
+    if (url.hostname === 'shell') return serveShellDocument(request, join(app.getAppPath(), 'renderer'))
     if (url.hostname === 'app') {
       if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname.startsWith('/assets/')
         || ['/favicon.svg', '/manifest.webmanifest'].includes(url.pathname)) {

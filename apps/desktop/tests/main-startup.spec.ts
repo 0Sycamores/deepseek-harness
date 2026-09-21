@@ -14,7 +14,8 @@ import { DesktopUpdatePreparationError } from '../src/update-error.ts'
 type InvokeEvent = { sender?: unknown; senderFrame: { url: string } }
 type InvokeHandler = (event: InvokeEvent, ...args: unknown[]) => unknown
 
-vi.mock('../src/web-document.ts', () => ({ authenticateWebHost: async () => 'test-cookie', serveWebDocument: vi.fn(), forwardWebRequest: vi.fn() }))
+vi.mock('../src/web-document.ts', () => ({ authenticateWebHost: async () => 'test-cookie', serveWebDocument: vi.fn(),
+  serveShellDocument: harness.serveShellDocument, forwardWebRequest: vi.fn() }))
 
 const harness = await vi.hoisted(async () => {
   const { EventEmitter } = await import('node:events')
@@ -135,6 +136,8 @@ const harness = await vi.hoisted(async () => {
   return {
     failWindow(error: Error) { windowFailure = error },
     windows, hosts, handlers, app, FakeWindow, FakeHost, powerMonitor,
+    protocol: { registerSchemesAsPrivileged: vi.fn(), handle: vi.fn() },
+    serveShellDocument: vi.fn(async () => new Response(null, { status: 200 })),
     menu, popup, socketHeaders: vi.fn(), updateCheck, updateDownload, updateInstall,
     ipcOn: vi.fn<(channel: string, listener: (event: { sender: unknown; senderFrame: unknown }, ...args: unknown[]) => void) => void>(),
     get updateState() { return updateState },
@@ -207,7 +210,7 @@ vi.mock('electron', () => ({
   },
   Menu: { setApplicationMenu: harness.menu.setApplicationMenu, buildFromTemplate: harness.menu },
   session: { defaultSession: { webRequest: { onBeforeSendHeaders: harness.socketHeaders } } },
-  protocol: { registerSchemesAsPrivileged: vi.fn(), handle: vi.fn() },
+  protocol: harness.protocol,
   powerMonitor: harness.powerMonitor,
 }))
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -307,6 +310,15 @@ afterEach(async () => {
 })
 
 describe('desktop main startup', () => {
+  it('serves shell window documents from the application renderer directory', async () => {
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    const handler = harness.protocol.handle.mock.calls[0]![1] as (request: Request) => Promise<Response>
+    const page = new Request('dsh-app://shell/update-dialog.html')
+    expect((await handler(page)).status).toBe(200)
+    expect(harness.serveShellDocument).toHaveBeenCalledExactlyOnceWith(page, join('desktop-test-app', 'renderer'))
+  })
+
   it.each([
     ['darwin', true, 'en-US'],
     ['darwin', false, 'zh-CN'],
