@@ -39,6 +39,18 @@ const { stdout, stderr } = await runNativeCommand('osascript', ['-e', script], s
 
 On exit 0 the call resolves with captured stdout and stderr. On any failure it rejects with the exit `code` and both captured streams attached, so a caller can tell a missing tool (`ENOENT`), a cancellation (`ABORT_ERR`), and a real command failure apart without re-running the command.
 
+### Running a command whose own window must appear
+
+```ts
+import { runNativeVisibleCommand } from '@deepseek-ai/dsh-native-command'
+
+declare const target: string
+declare const signal: AbortSignal
+await runNativeVisibleCommand('explorer.exe', ['/select,', target], signal)
+```
+
+`runNativeVisibleCommand` is the same runner without Windows hiding. `windowsHide` sets the started process's show state to `SW_HIDE`, and the first window that process itself opens inherits it — the window is created and never displayed. Commands that open their window through another process keep `runNativeCommand`, whose hidden console is the point.
+
 ### Injecting the command boundary
 
 The `NativeCommandRunner` type is the injectable command boundary for host integrations: pass the function (or a wrapper) where the integration needs a testable boundary, so tests can substitute a fake runner.
@@ -47,7 +59,7 @@ The `NativeCommandRunner` type is the injectable command boundary for host integ
 
 `openNativePath(path, signal)` hands a path to the default application and prefers the named default browser for HTML and SVG where the platform can identify one. `openNativeAssociatedPath(path, signal)` always uses the file-type association, without a browser override. `openNativeTextFile(path, signal)` selects text-editor intent; on macOS it uses `open -t`. WSL paths are translated with `wslpath -w` before the Windows desktop receives them. `canOpenNativePath()` reports whether the current Host plausibly has a desktop target.
 
-`revealNativePath(path, signal)` selects the file in Finder or Explorer, including WSL path translation, and opens its parent directory through `xdg-open` on desktop Linux. `nativeFileManager()` identifies that action for Host-derived UI labels; desktop availability remains a separate `canOpenNativePath()` check. Callers must authorize the absolute file path before invoking either operation. Platform dispatch is covered by injected-runner tests; native desktop verification belongs to the corresponding platform. Explorer receives an encoded file URI as a separate argument. Its exit code 1 is accepted as a delegated handoff; cancellation, missing executables, and other exit codes still reject. This acknowledgement does not prove that a desktop window selected the file.
+`revealNativePath(path, signal)` selects the file in Finder or Explorer, including WSL path translation, and opens its parent directory through `xdg-open` on desktop Linux. `nativeFileManager()` identifies that action for Host-derived UI labels; desktop availability remains a separate `canOpenNativePath()` check. Callers must authorize the absolute file path before invoking either operation. Platform dispatch is covered by injected-runner tests; native desktop verification belongs to the corresponding platform. Explorer receives an encoded file URI as a separate argument and is started through the visible runner above, so the window it opens can appear. Its exit code 1 is accepted as a delegated handoff; cancellation, missing executables, and other exit codes still reject. This acknowledgement does not prove that a desktop window selected the file.
 
 `nativeFileApplications(path, signal)` returns registered applications, localized names, icons, and the current default. macOS 12 and later use LaunchServices; Windows uses Shell association handlers; Linux uses GIO with shared XDG desktop-entry and icon lookup. On macOS, copies sharing a bundle identifier and display name (staged self-updates, per-version installs) collapse to the system default, else the highest version; deliberate side-by-side installs keep distinct display names and both entries. `openNativeFileApplication(path, application, signal)` revalidates the handler against the complete registered list, so copies collapsed out of the display list stay openable, and never changes the system default. Windows delegates invocation to the Shell, and Linux delegates argument expansion to `gio launch`. WSL translates the path and uses the Windows adapter. Callers authorize the local file path. Native integration tests use private Windows file associations and Linux XDG roots on their respective platforms.
 
@@ -72,7 +84,7 @@ The command runner is a thin wrapper over Node's `execFile`. The path opener sel
 
 ### What execFile gives the runner
 
-`execFile` spawns the executable directly with an argv array — no shell string, no shell interpretation of the arguments. The `signal` option terminates the child when the caller's abort fires; `windowsHide` suppresses the transient console window on Windows. On a non-zero exit or spawn error, the callback attaches `code`, `stdout`, and `stderr` to the rejected error and keeps the original error as `cause`.
+`execFile` spawns the executable directly with an argv array — no shell string, no shell interpretation of the arguments. The `signal` option terminates the child when the caller's abort fires; `windowsHide` suppresses the transient console window on Windows, and the hidden show state reaches the started process — the reason the two exported runners differ. On a non-zero exit or spawn error, the callback attaches `code`, `stdout`, and `stderr` to the rejected error and keeps the original error as `cause`.
 
 </details>
 

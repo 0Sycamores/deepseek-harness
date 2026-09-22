@@ -12,7 +12,7 @@
 import { release as osRelease } from 'node:os'
 import { dirname, extname } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { runNativeCommand, type NativeCommandRunner } from './runner.ts'
+import { runNativeCommand, runNativeVisibleCommand, type NativeCommandRunner } from './runner.ts'
 
 /** Testable command boundary; native implementations never invoke a shell. */
 export type PathOpenerRunner = NativeCommandRunner
@@ -233,6 +233,10 @@ export function nativeFileManager(internals: PathOpenerInternals = {}): NativeFi
 
 /**
  * Reveal a file in Finder or Explorer, or open its parent in the Linux default file manager.
+ *
+ * The default runner leaves the started process's own window visible: hiding it
+ * also hides the first window the file manager opens, which makes a successful
+ * reveal look like nothing happened.
  * @param path - absolute file path already authorized by the caller.
  * @param signal - caller lifetime; abort terminates the native command.
  * @param internals - platform, environment, and command runner for adapter tests.
@@ -243,7 +247,7 @@ export async function revealNativePath(
 ): Promise<void> {
   signal.throwIfAborted()
   const platform = internals.platform ?? process.platform
-  const run = internals.run ?? runNativeCommand
+  const run = internals.run ?? runNativeVisibleCommand
   const manager = nativeFileManager({ ...internals, platform })
   if (manager === 'finder') {
     await run('open', ['-R', path], signal)

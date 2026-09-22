@@ -377,6 +377,16 @@ it('uses the native runner for a file-manager handoff when none is injected', as
   execFileMock.mockImplementation((_command, _args, _options, callback) => { callback(null, '', '') })
   await revealNativePath('/tmp/report.txt', signal())
   expect(execFileMock).toHaveBeenCalled()
+  // The file manager's window belongs to the process started here: a hidden start
+  // state would open that window without ever displaying it.
+  expect(execFileMock.mock.calls.at(-1)?.[2]).toMatchObject({ windowsHide: false })
+})
+
+
+it('keeps the hidden console for a default-application open', async () => {
+  execFileMock.mockImplementation((_command, _args, _options, callback) => { callback(null, '', '') })
+  await openNativePath('/tmp/report.txt', signal())
+  expect(execFileMock.mock.calls.at(-1)?.[2]).toMatchObject({ windowsHide: true })
 })
 
 

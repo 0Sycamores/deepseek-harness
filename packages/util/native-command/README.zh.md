@@ -39,6 +39,18 @@ const { stdout, stderr } = await runNativeCommand('osascript', ['-e', script], s
 
 退出码为 0 时，调用解析为捕获到的 stdout 与 stderr。任何失败都会以错误拒绝，错误附带退出 `code` 与两路已捕获输出，因此调用方无需重跑命令即可区分工具缺失（`ENOENT`）、取消（`ABORT_ERR`）与真实的命令失败。
 
+### 运行一条必须显示自己窗口的命令
+
+```ts
+import { runNativeVisibleCommand } from '@deepseek-ai/dsh-native-command'
+
+declare const target: string
+declare const signal: AbortSignal
+await runNativeVisibleCommand('explorer.exe', ['/select,', target], signal)
+```
+
+`runNativeVisibleCommand` 是不做 Windows 隐藏的同一个运行器。`windowsHide` 会把被启动进程的显示状态设为 `SW_HIDE`，而该进程自己打开的第一个窗口会继承这一状态——窗口被创建却从不显示。窗口由其他进程打开的命令继续使用 `runNativeCommand`，它的隐藏控制台正是目的所在。
+
 ### 注入命令边界
 
 `NativeCommandRunner` 类型是宿主集成的可注入命令边界：在集成需要一个可测试边界的位置传入该函数（或其包装层），测试即可替换为假运行器。
@@ -47,7 +59,7 @@ const { stdout, stderr } = await runNativeCommand('osascript', ['-e', script], s
 
 `openNativePath(path, signal)` 将路径交给默认应用；平台能够确定默认浏览器时，HTML 与 SVG 会优先交给该浏览器。`openNativeAssociatedPath(path, signal)` 始终使用文件类型关联，不覆盖为浏览器。`openNativeTextFile(path, signal)` 选择文本编辑器意图；macOS 使用 `open -t`。WSL 路径先通过 `wslpath -w` 转换，再交给 Windows 桌面。`canOpenNativePath()` 报告当前 Host 是否可能具备桌面目标。
 
-`revealNativePath(path, signal)` 在 Finder 或文件资源管理器中选中文件，包含 WSL 路径转换；在桌面 Linux 上通过 `xdg-open` 打开上层目录。`nativeFileManager()` 标识该操作，供 UI 根据 Host 选择文案；桌面是否可用仍由独立的 `canOpenNativePath()` 检查决定。调用方必须先授权绝对文件路径，再执行操作。平台分派由注入运行器的测试覆盖；原生桌面验证由对应平台负责。 Explorer 接收独立参数中的编码文件 URI。退出码 1 按已转交请求处理；取消、找不到可执行文件和其他退出码仍然报错。该确认不能证明桌面窗口已选中文件。
+`revealNativePath(path, signal)` 在 Finder 或文件资源管理器中选中文件，包含 WSL 路径转换；在桌面 Linux 上通过 `xdg-open` 打开上层目录。`nativeFileManager()` 标识该操作，供 UI 根据 Host 选择文案；桌面是否可用仍由独立的 `canOpenNativePath()` 检查决定。调用方必须先授权绝对文件路径，再执行操作。平台分派由注入运行器的测试覆盖；原生桌面验证由对应平台负责。 Explorer 接收独立参数中的编码文件 URI，并通过上文的可见运行器启动，使其打开的窗口能够显示。退出码 1 按已转交请求处理；取消、找不到可执行文件和其他退出码仍然报错。该确认不能证明桌面窗口已选中文件。
 
 `nativeFileApplications(path, signal)` 返回关联应用、本地化名称、图标和当前默认项。macOS 12 及以上版本使用 LaunchServices，Windows 使用 Shell 关联处理器，Linux 使用 GIO，并共用 XDG 桌面文件和图标读取逻辑。macOS 上 bundle 标识符与显示名都相同的多份拷贝（自更新暂存副本、按版本安装的拷贝）合并为系统默认项，否则保留最高版本；显示名不同的并存安装两项都保留。`openNativeFileApplication(path, application, signal)` 按完整的当前注册列表重新验证关联应用，展示列表中被合并掉的拷贝仍可打开，且不修改系统默认值。Windows 交给 Shell 启动应用，Linux 交给 `gio launch` 展开参数。WSL 转换路径后使用 Windows 适配器。调用方负责验证本地文件路径。原生集成测试分别在相应平台使用独立的 Windows 文件关联和 Linux XDG 目录。
 
@@ -72,7 +84,7 @@ const { stdout, stderr } = await runNativeCommand('osascript', ['-e', script], s
 
 ### execFile 给了运行器什么
 
-`execFile` 以 argv 数组直接 spawn 可执行文件——没有 shell 字符串，参数不经 shell 解释。`signal` 选项在调用方中止触发时终止子进程；`windowsHide` 在 Windows 上抑制瞬时控制台窗口。遇到非零退出或 spawn 错误时，回调把 `code`、`stdout`、`stderr` 挂到被拒绝的错误上，并保留原始错误作为 `cause`。
+`execFile` 以 argv 数组直接 spawn 可执行文件——没有 shell 字符串，参数不经 shell 解释。`signal` 选项在调用方中止触发时终止子进程；`windowsHide` 在 Windows 上抑制瞬时控制台窗口，同时把隐藏的显示状态传给被启动进程——这正是两个运行器分开的原因。遇到非零退出或 spawn 错误时，回调把 `code`、`stdout`、`stderr` 挂到被拒绝的错误上，并保留原始错误作为 `cause`。
 
 </details>
 
