@@ -10,13 +10,12 @@ const MIME: Readonly<Record<string, string>> = {
 const BOOT = '<script>globalThis.__DSH_BOOT_READY__ = Promise.withResolvers()</script>'
 
 /**
- * Read one static file under a document root; rejects traversal, missing files, and unsafe methods.
- * @param request - Local request.
- * @param root - Directory containing the served documents.
- * @param application - Whether the entry document receives the Host boot rendezvous.
- * @returns Static response, or a rejected-path/method response.
+ * Read an application-owned static asset; the index waits for asynchronous Host injections.
+ * @param request - Local application request.
+ * @param root - Packaged Web dist directory.
+ * @returns Static response, or a missing/invalid path response.
  */
-async function serveStaticDocument(request: Request, root: string, application: boolean): Promise<Response> {
+export async function serveWebDocument(request: Request, root: string): Promise<Response> {
   if (!['GET', 'HEAD'].includes(request.method)) return new Response(null, { status: 405 })
   const url = new URL(request.url)
   let pathname: string
@@ -29,31 +28,11 @@ async function serveStaticDocument(request: Request, root: string, application: 
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return new Response(null, { status: 404 })
     throw error
   }
-  const content = application && (pathname === '/' || pathname === '/index.html')
+  const content = pathname === '/' || pathname === '/index.html'
     ? body.toString().replace('<head>', '<head>' + BOOT) : new Uint8Array(body)
   return new Response(request.method === 'HEAD' ? null : content, {
     headers: { 'content-type': MIME[extname(target)] ?? 'application/octet-stream' },
   })
-}
-
-/**
- * Read an application-owned static asset; the index waits for asynchronous Host injections.
- * @param request - Local application request.
- * @param root - Packaged Web dist directory.
- * @returns Static response, or a missing/invalid path response.
- */
-export function serveWebDocument(request: Request, root: string): Promise<Response> {
-  return serveStaticDocument(request, root, true)
-}
-
-/**
- * Read a shell-window document or asset; shell windows await their own preload APIs instead of the Host boot.
- * @param request - Local shell request.
- * @param root - Directory holding the packaged shell documents.
- * @returns Static response, or a missing/invalid path response.
- */
-export function serveShellDocument(request: Request, root: string): Promise<Response> {
-  return serveStaticDocument(request, root, false)
 }
 
 /**

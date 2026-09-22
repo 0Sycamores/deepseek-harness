@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { authenticateWebHost, forwardWebRequest, serveShellDocument, serveWebDocument } from '../src/web-document.ts'
+import { authenticateWebHost, forwardWebRequest, serveWebDocument } from '../src/web-document.ts'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -27,20 +27,6 @@ it('serves the Web entry and assets without starting or contacting a Host', asyn
   expect((await serveWebDocument(new Request('dsh-app://app/missing.js'), root)).status).toBe(404)
 })
 
-it('serves shell window documents from their own directory without the application boot rendezvous', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'desktop-shell-'))
-  roots.push(root)
-  await writeFile(join(root, 'index.html'), '<html><head></head><body>shell</body></html>')
-  await writeFile(join(root, 'update-dialog.html'), '<html><head></head><body>confirmation</body></html>')
-  const page = await serveShellDocument(new Request('dsh-app://shell/update-dialog.html'), root)
-  expect(page.headers.get('content-type')).toBe('text/html; charset=utf-8')
-  expect(await page.text()).toContain('confirmation')
-  expect(await (await serveShellDocument(new Request('dsh-app://shell/'), root)).text()).not.toContain('__DSH_BOOT_READY__')
-  expect((await serveShellDocument(new Request('dsh-app://shell/%2e%2e%2fprivate'), root)).status).toBe(403)
-  expect((await serveShellDocument(new Request('dsh-app://shell/update-dialog.css'), root)).status).toBe(404)
-  expect((await serveShellDocument(new Request('dsh-app://shell/update-dialog.html', { method: 'POST' }), root)).status).toBe(405)
-})
-
 it('requires the Host authentication exchange and retains only its cookie value', async () => {
   const fetch = vi.fn().mockResolvedValueOnce(new Response(null, { status: 303, headers: { 'set-cookie': 'session=owned; HttpOnly; SameSite=Strict' } }))
     .mockResolvedValueOnce(new Response('unauthorized', { status: 401 }))
@@ -57,7 +43,7 @@ it('forwards upload bytes and cancellation with Host credentials while keeping t
     method: 'POST', body: 'upload bytes', headers: { origin: 'dsh-app://app', cookie: 'untrusted' },
   })
   const response = await forwardWebRequest(request, 'http://127.0.0.1:1234/?token=secret', 'session=owned')
-  const [target, init] = fetch.mock.calls[0] as unknown as [URL, RequestInit]
+  const [target, init] = fetch.mock.calls[0] as [URL, RequestInit]
   expect(target.href).toBe('http://127.0.0.1:1234/api/upload?name=file')
   expect(new Headers(init.headers).get('cookie')).toBe('session=owned')
   expect(new Headers(init.headers).get('origin')).toBeNull()
