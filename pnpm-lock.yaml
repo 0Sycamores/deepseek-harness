@@ -566,15 +566,6 @@ importers:
       '@deepseek-ai/dsh-api-gateway':
         specifier: workspace:*
         version: link:../../packages/api/gateway
-      '@deepseek-ai/dsh-client-connection':
-        specifier: workspace:*
-        version: link:../../packages/client/connection
-      '@deepseek-ai/dsh-scope':
-        specifier: workspace:*
-        version: link:../../packages/core/scope
-      '@deepseek-ai/dsh-util-crypto':
-        specifier: workspace:*
-        version: link:../../packages/util/crypto
       electron-updater:
         specifier: ^6.8.9
         version: 6.8.9
